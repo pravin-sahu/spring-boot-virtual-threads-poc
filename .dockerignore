@@ -1,0 +1,33 @@
+# Version control
+.git
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.iml
+node_modules/
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config — never goes into an image
+.env
+application-local.yml
+application-local.properties
+
+# Documentation
+*.md
+docs/
+
+# Test reports
+TEST-*.xml
+surefire-reports/
+
+# Docker files themselves (no need to copy into image)
+Dockerfile*
+docker-compose*.yml
+docker/

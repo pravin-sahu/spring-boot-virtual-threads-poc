@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────
+# docker-compose.yml — LOCAL DEVELOPMENT ONLY
+# ─────────────────────────────────────────────────────────────────
+
+name: mb-spring-local
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────
+  postgres:
+    image: postgres:18-alpine
+    container_name: mb-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+
+      # Locale settings — important for sorting/collation consistency
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+
+    ports:
+      - "${DATABASE_PORT}:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME} -d ${DATABASE_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Spring Boot Application ────────────────────────────────────
+  app:
+    container_name: mb-app
+    build:
+      context: .
+      dockerfile: Dockerfile.local     # lightweight local build
+    restart: unless-stopped
+
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${DATABASE_HOST}:5432/${DATABASE_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DATABASE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${DATABASE_PASSWORD}
+
+    ports:
+      - "${APP_PORT}:8001"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

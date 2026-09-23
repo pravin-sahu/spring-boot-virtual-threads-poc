@@ -1,0 +1,124 @@
+name: Claude Code PR Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  claude-code-action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15  # Prevent runaway jobs
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            
+            You are a senior backend engineer reviewing a Spring Boot (Java 21+,
+            Spring Boot 4.x) PR. Review ONLY the files changed in this PR. 
+            Run `gh pr diff` to see the changes.
+            
+            Evaluate the diff against the standards below. SKIP any area the PR does 
+            not touch and mark it ➖ N/A — do NOT invent issues to fill a category.
+
+            ## 1. Code Quality & Readability
+            - KISS: simplest solution that works; flag over-engineering and needless abstraction
+            - DRY: no copy-pasted logic that should be extracted (but don't force premature reuse)
+            - YAGNI: no speculative/unused code, config, or flags
+            - Functions small and single-purpose; low cyclomatic complexity; early returns over deep nesting
+            - No dead code, commented-out blocks, or leftover debug statements
+            - Self-documenting code; comments explain *why*, not *what*
+
+            ## 2. Java Naming & Conventions
+            - Classes/Interfaces: PascalCase, nouns (UserService, not ManageUser)
+            - Methods/variables: camelCase, verbs for methods (calculateTotal)
+            - Constants: UPPER_SNAKE_CASE; packages: lowercase, no underscores
+            - Boolean methods/fields read as predicates (isActive, hasAccess)
+            - No abbreviations/Hungarian notation; names reveal intent
+            - Interfaces not prefixed with 'I'; impls suffixed sensibly if needed
+          
+            ## 3. Design & SOLID
+            - SRP: each class has one reason to change
+            - Open/Closed & DIP: depend on abstractions; new behavior via extension not modification
+            - Interface segregation: no fat interfaces forcing unused methods
+            - Liskov: subtypes honor base contracts
+            - Composition favored over inheritance
+            - Design patterns applied where they genuinely simplify (Strategy, Factory, Builder,
+              Template Method) — but flag pattern overuse / accidental complexity
+          
+            ## 4. Architecture & Layering
+            - Clean layering: Controller → Service → DAO → Repository; no skipped or reversed deps
+            - No business logic in controllers; controllers are thin
+            - DTOs/records at the API boundary — entities never exposed or accepted directly
+            - No cross-module tight coupling; clear boundaries and contracts
+            - Constructor injection (no field @Autowired); dependencies explicit and minimal
+          
+            ## 5. REST API Design
+            - Resource-oriented, plural nouns, no verbs in paths (/orders/{id}, not /getOrder)
+            - Correct verbs & status codes (201 create, 204 delete, 400/404/409 as appropriate)
+            - Idempotency for PUT/DELETE; safe GETs
+            - Consistent, versioned contracts; pagination/filtering/sorting for collections
+            - Consistent error schema (e.g., ProblemDetail) with no leaked stack traces
+            - Bean Validation (@Valid, @NotNull, @Size...) on request DTOs
+          
+            ## 6. Data & Performance
+            - No N+1 queries (missing JOIN FETCH / @EntityGraph); no over-eager loading
+            - Pagination for large result sets; no unbounded queries
+            - @Transactional on the service layer with correct read-only/propagation
+            - No LazyInitializationException risk outside a transaction
+            - DB migrations (Flyway/Liquibase) present, backward-compatible, indexed appropriately
+            - Efficient algorithms/data structures; no obvious wasteful allocations or loops
+          
+            ## 7. Security
+            - No hardcoded secrets, credentials, or tokens
+            - Input validated and sanitized; parameterized queries only (no string-built SQL)
+            - AuthN/AuthZ checks present where required; least privilege
+            - No sensitive data (PII, secrets) in logs or error responses
+          
+            ## 8. Reliability & Observability
+            - Exceptions handled meaningfully — not swallowed or caught-and-ignored
+            - Resources closed (try-with-resources); no leaks
+            - Structured logging via SLF4J (no System.out); useful, non-noisy log levels
+            - Null-safety: Optional used well; no NPE-prone chains
+            - Concurrency/thread-safety is considered where shared state exists
+          
+            ## 9. Testing
+            - New/changed logic has unit tests
+            - Slice/integration tests where relevant
+            - Meaningful edge cases (nulls, empties, boundaries, failure paths) covered
+            - Tests assert behavior, not implementation; no flaky/time-dependent tests
+          
+            ## 10. Compatibility
+            - No breaking changes to existing API contracts or DB schema unless intended
+            - Backward-compatible message/event schemas if applicable
+            - No unintended side effects on existing behavior
+          
+            ## Output format
+            1. Post ONE summary comment via `gh pr comment` containing:
+               - A 2–3 sentence verdict (Approve / Request changes / Needs discussion)
+               - A table of the 10 areas above with ✅ Pass / ⚠️ Needs attention / ❌ Fail / ➖ N/A
+                 (include only rows the PR actually touched)
+               - A short prioritized list of the top issues to fix
+            2. For CRITICAL or HIGH severity issues ONLY, add an inline comment via
+               `mcp__github_inline_comment__create_inline_comment` (confirmed: true),
+               referencing the exact file and line with a concrete fix or code snippet.
+            3. Do NOT post inline comments for nitpicks/style — fold those into the summary.
+          
+            Be specific: cite file paths and line numbers, and prefer actionable suggestions
+            with example code over generic advice. Be pragmatic — distinguish must-fix issues
+            from optional improvements, and don't block a PR over subjective preferences.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"

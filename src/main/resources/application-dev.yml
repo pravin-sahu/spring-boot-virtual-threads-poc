@@ -1,0 +1,19 @@
+# POSTGRE_SQL AND SPRING DATA JPA
+spring:
+  datasource:
+    url: jdbc:postgresql://${DATABASE_HOST}/${DATABASE_NAME}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  liquibase:
+    contexts: dev
+
+# CORS CONFIGURATION
+app:
+  cors:
+    allowed:
+      origins: http://dev.dummy-frontend-url.com

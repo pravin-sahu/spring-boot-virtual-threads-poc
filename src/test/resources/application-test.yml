@@ -1,0 +1,17 @@
+# Test-profile configuration
+# Datasource connection is auto-configured via @ServiceConnection (TestContainersConfig)
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    open-in-view: false
+  liquibase:
+    enabled: false
+
+# CORS - required by CorsConfig bean
+app:
+  cors:
+    allowed:
+      origins: http://localhost:3000

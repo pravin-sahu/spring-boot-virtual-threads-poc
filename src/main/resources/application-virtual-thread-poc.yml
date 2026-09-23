@@ -1,0 +1,8 @@
+# Virtual thread PoC profile — activate alongside your normal profile, e.g.
+#   SPRING_PROFILES_ACTIVE=local,virtual-thread-poc
+# Serves Tomcat requests (and @Async / @Scheduled work) on virtual threads.
+# To compare with platform threads, drop this profile or pass --spring.threads.virtual.enabled=false
+spring:
+  threads:
+    virtual:
+      enabled: true

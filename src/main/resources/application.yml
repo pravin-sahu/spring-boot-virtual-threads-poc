@@ -1,0 +1,36 @@
+# Server configuration
+server:
+  port: 8001
+
+# Logging
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%X{requestId:-no-rid}] --- [%t] %logger : %m%n%wEx"
+
+spring:
+  application:
+    name: spring-rest-boilerplate
+  profiles:
+    # Used only when no profile is set (e.g. running from the IDE). Deployed environments always set one.
+    default: local
+  mvc:
+    apiversion:
+      default: 1.0
+      supported:
+      - 1.0
+      use:
+        path-segment: 0
+
+# Actuator configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+# Http Client Configuration (Default values for RestClient)
+app:
+  http:
+    client:
+      connection-timeout-ms: 5000
+      read-timeout-ms: 10000

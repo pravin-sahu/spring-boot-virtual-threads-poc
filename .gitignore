@@ -1,0 +1,84 @@
+# -----------------------------------
+# Java / Spring Boot
+# -----------------------------------
+
+
+# Environment files
+.env
+
+# Compiled class files
+*.class
+
+# Log files
+*.log
+*.zip
+
+# Application properties (local overrides)
+application-local.yml
+
+# IDE specific files (Eclipse, IntelliJ, VS Code)
+.classpath
+.project
+.factorypath
+.metadata
+.settings/
+.recommenders/
+.springBeans
+.vscode/
+.checkstyle
+.scannerwork
+.claude/
+
+# Misc
+.attach_pid*
+
+# -----------------------------------
+# Maven
+# -----------------------------------
+
+target/
+
+# Unit test reports
+TEST-*.xml
+
+# -----------------------------------
+# OS generated files
+# -----------------------------------
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# -----------------------------------
+# Executables / Packages
+# -----------------------------------
+
+*.jar
+*.war
+*.app
+*.exe
+
+# -----------------------------------
+# Media files (optional, customize as needed)
+# -----------------------------------
+
+*.mp4
+*.tiff
+*.avi
+*.flv
+*.mov
+*.wmv
+
+# -----------------------------------
+# Node.js (optional - if using frontend in same repo)
+# -----------------------------------
+
+node_modules/
+
+# -----------------------------------
+# Other
+# -----------------------------------
+
+/bin/
