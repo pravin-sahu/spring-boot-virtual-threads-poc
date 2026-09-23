@@ -5,10 +5,10 @@ import com.mb.common.constant.ResponseMessage;
 import com.mb.common.dto.response.ApiResponse;
 import com.mb.common.util.ApiResponseBuilder;
 import com.mb.modules.virtualthread.config.VirtualThreadPocConfig;
-import com.mb.modules.virtualthread.dto.response.ConcurrentRunResponseDto;
+import com.mb.modules.virtualthread.dto.response.ComparisonResponseDto;
 import com.mb.modules.virtualthread.dto.response.IoSimulationResponseDto;
 import com.mb.modules.virtualthread.dto.response.ThreadInfoResponseDto;
-import com.mb.modules.virtualthread.enums.ThreadMode;
+import com.mb.modules.virtualthread.enums.WorkloadType;
 import com.mb.modules.virtualthread.service.VirtualThreadService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -66,23 +66,27 @@ public class VirtualThreadController {
   }
 
   /**
-   * Batch of concurrent simulated I/O waits on platform or virtual threads
+   * Runs the same workload on platform threads and on virtual threads, and returns both sides
    *
-   * @param mode thread mode
-   * @param tasks number of tasks
-   * @param delayMs simulated wait per task in milliseconds
-   * @param poolSize platform pool size (ignored for virtual)
+   * @param workload IO (waiting) or CPU (computing)
+   * @param tasks number of tasks; defaults to 2000 for IO and 2 x cores for CPU
+   * @param delayMs simulated wait per task, used by IO
+   * @param primeLimit prime-counting limit per task, used by CPU
+   * @param poolSize platform pool size; defaults to 100 for IO and the core count for CPU
+   * @param runs how many times to repeat each mode
    * @return {@link ResponseEntity}
    */
-  @GetMapping(value = ApiEndpoint.VIRTUAL_THREADS_CONCURRENT, version = "1.0")
-  public ResponseEntity<ApiResponse<ConcurrentRunResponseDto>> runConcurrent(
-      @RequestParam(defaultValue = "VIRTUAL") ThreadMode mode,
-      @RequestParam(defaultValue = "1000") @Min(1) @Max(10_000) int tasks,
-      @RequestParam(defaultValue = "100") @Min(0) @Max(5_000) long delayMs,
-      @RequestParam(defaultValue = "100") @Min(1) @Max(1_000) int poolSize) {
+  @GetMapping(value = ApiEndpoint.VIRTUAL_THREADS_COMPARE, version = "1.0")
+  public ResponseEntity<ApiResponse<ComparisonResponseDto>> compare(
+      @RequestParam(defaultValue = "IO") WorkloadType workload,
+      @RequestParam(required = false) @Min(1) @Max(5_000) Integer tasks,
+      @RequestParam(defaultValue = "100") @Min(0) @Max(2_000) long delayMs,
+      @RequestParam(defaultValue = "2000000") @Min(1_000) @Max(3_000_000) int primeLimit,
+      @RequestParam(required = false) @Min(1) @Max(500) Integer poolSize,
+      @RequestParam(defaultValue = "1") @Min(1) @Max(3) int runs) {
 
-    ConcurrentRunResponseDto result =
-        virtualThreadService.runConcurrentIo(mode, tasks, delayMs, poolSize);
+    ComparisonResponseDto result =
+        virtualThreadService.compare(workload, tasks, delayMs, primeLimit, poolSize, runs);
 
     return responseBuilder.success(ResponseMessage.SUCCESS, result, HttpStatus.OK);
   }

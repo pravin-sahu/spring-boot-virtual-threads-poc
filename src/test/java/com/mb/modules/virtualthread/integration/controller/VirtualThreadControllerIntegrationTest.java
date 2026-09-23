@@ -1,6 +1,6 @@
 package com.mb.modules.virtualthread.integration.controller;
 
-import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.CONCURRENT_URL;
+import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.COMPARE_URL;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.INFO_URL;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.IO_URL;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,43 +68,55 @@ class VirtualThreadControllerIntegrationTest extends AbstractBaseIntegrationTest
   }
 
   @Test
-  @DisplayName("VIRTUAL batch runs every task on a virtual thread")
-  void concurrentVirtualRunsOnVirtualThreads() {
+  @DisplayName("IO comparison: platform is bounded by the pool, virtual runs every task at once")
+  void compareIoRunsBothModes() {
     restClient
         .get()
-        .uri(CONCURRENT_URL + "?mode=VIRTUAL&tasks=50&delayMs=10")
+        .uri(COMPARE_URL + "?workload=IO&tasks=50&delayMs=10&poolSize=5")
         .exchange()
         .expectStatus()
         .isOk()
         .expectBody()
-        .jsonPath("$.data.mode")
-        .isEqualTo("VIRTUAL")
-        .jsonPath("$.data.tasksOnVirtualThreads")
-        .isEqualTo(50);
-  }
-
-  @Test
-  @DisplayName("PLATFORM batch never exceeds the pool size and uses no virtual threads")
-  void concurrentPlatformIsBoundedByPool() {
-    restClient
-        .get()
-        .uri(CONCURRENT_URL + "?mode=PLATFORM&tasks=20&delayMs=10&poolSize=4")
-        .exchange()
-        .expectStatus()
-        .isOk()
-        .expectBody()
-        .jsonPath("$.data.tasksOnVirtualThreads")
+        .jsonPath("$.data.sameWorkVerified")
+        .isEqualTo(true)
+        .jsonPath("$.data.platform.tasksOnVirtualThreads")
         .isEqualTo(0)
-        .jsonPath("$.data.maxObservedConcurrency")
-        .value(Integer.class, value -> assertThat(value).isLessThanOrEqualTo(4));
+        .jsonPath("$.data.platform.maxObservedConcurrency")
+        .value(Integer.class, value -> assertThat(value).isLessThanOrEqualTo(5))
+        .jsonPath("$.data.virtual.tasksOnVirtualThreads")
+        .isEqualTo(50)
+        .jsonPath("$.data.virtual.maxObservedConcurrency")
+        .isEqualTo(50)
+        .jsonPath("$.data.virtual.sampleThread")
+        .value(String.class, value -> assertThat(value).startsWith("VirtualThread["));
   }
 
   @Test
-  @DisplayName("too-long PLATFORM batch → 400 INVALID_REQUEST")
-  void concurrentTooLongPlatformRunReturnsBadRequest() {
+  @DisplayName("CPU comparison: virtual concurrency never exceeds the core count")
+  void compareCpuIsBoundedByCores() {
+    int processors = Runtime.getRuntime().availableProcessors();
+
     restClient
         .get()
-        .uri(CONCURRENT_URL + "?mode=PLATFORM&tasks=10000&delayMs=1000&poolSize=1")
+        .uri(COMPARE_URL + "?workload=CPU&tasks=8&primeLimit=20000")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectBody()
+        .jsonPath("$.data.workload")
+        .isEqualTo("CPU")
+        .jsonPath("$.data.sameWorkVerified")
+        .isEqualTo(true)
+        .jsonPath("$.data.virtual.maxObservedConcurrency")
+        .value(Integer.class, value -> assertThat(value).isLessThanOrEqualTo(processors));
+  }
+
+  @Test
+  @DisplayName("too-long IO run → 400 INVALID_REQUEST")
+  void compareTooLongRunReturnsBadRequest() {
+    restClient
+        .get()
+        .uri(COMPARE_URL + "?workload=IO&tasks=5000&delayMs=2000&poolSize=1")
         .exchange()
         .expectStatus()
         .isBadRequest()

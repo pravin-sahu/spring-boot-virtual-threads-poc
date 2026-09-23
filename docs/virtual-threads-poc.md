@@ -179,35 +179,10 @@ Sample output from this machine:
 [6] main thread -> name='main', isVirtual=false, Thread[#3,main,5,main]
 ```
 
-### 10.2 Benchmarks (plain Java, no Spring, no DB)
+### 10.2 The application and its endpoints
 
-```bash
-mvn -q compile
-# I/O-bound: 1,000 / 5,000 / 10,000 tasks, 100 ms simulated wait, platform pool of 100 (≈ 65 s)
-java -cp target/classes com.mb.modules.virtualthread.benchmark.VirtualThreadBenchmarkApp \
-     mode=io tasks=1000,5000,10000 ioWaitMs=100 poolSize=100
-
-# CPU-bound: 2 × cores tasks, count primes up to 2,000,000, platform pool = cores (≈ 15 s)
-java -cp target/classes com.mb.modules.virtualthread.benchmark.VirtualThreadBenchmarkApp mode=cpu
-```
-
-| Option | Default | Meaning |
-| :--- | :--- | :--- |
-| `mode` | `all` | `io`, `cpu` or `all` |
-| `tasks` | `1000,5000,10000` | I/O task counts (comma-separated) |
-| `ioWaitMs` | `100` | Simulated wait per I/O task |
-| `poolSize` | `100` | Platform pool size for I/O |
-| `cpuTasks` | `2 × cores` | CPU task count |
-| `primeLimit` | `2000000` | CPU work per task |
-| `cpuPoolSize` | `cores` | Platform pool size for CPU |
-| `warmups` / `runs` | `1` / `3` | Discarded warm-up runs / measured runs per mode |
-
-### 10.3 Spring Boot application
-
-The app itself needs PostgreSQL (the boilerplate's JPA/Liquibase). The benchmarks above do not.
-
-**One-time setup:** create `src/main/resources/application-local.yml`. It is gitignored, so each
-developer keeps their own credentials out of git.
+The app needs PostgreSQL (the boilerplate's JPA/Liquibase). **One-time setup:** create
+`src/main/resources/application-local.yml`. It is gitignored, so credentials stay out of git.
 
 ```yaml
 server:
@@ -233,10 +208,10 @@ app:
 mvn clean package -DskipTests
 
 # Virtual threads ON (PoC profile). List local too: setting any profile disables the default one.
-java -jar target/spring-rest-0.0.1.jar --spring.profiles.active=local,virtual-thread-poc
-# or: mvn spring-boot:run -Dspring-boot.run.profiles=local,virtual-thread-poc
+mvn spring-boot:run -Dspring-boot.run.profiles=local,virtual-thread-poc
+# or: java -jar target/spring-rest-0.0.1.jar --spring.profiles.active=local,virtual-thread-poc
 
-# Virtual threads OFF, for comparison (PoC endpoints still available)
+# Virtual threads OFF, for comparison (the PoC endpoints stay available)
 java -jar target/spring-rest-0.0.1.jar --spring.profiles.active=local,virtual-thread-poc \
      --spring.threads.virtual.enabled=false
 
@@ -244,191 +219,214 @@ java -jar target/spring-rest-0.0.1.jar --spring.profiles.active=local,virtual-th
 java -jar target/spring-rest-0.0.1.jar
 ```
 
-The measurements in §12.3 were taken with an equivalent setup: a throwaway PostgreSQL container, with
-the datasource and CORS passed as environment variables / arguments and `--server.port=8081`.
-
 | Endpoint | Purpose |
 | :--- | :--- |
-| `GET /v1/virtual-threads/info` | Is the request thread virtual? Name, id, `toString()` (shows the carrier) |
-| `GET /v1/virtual-threads/io?delayMs=200` | Simulated I/O wait (0–10,000 ms) on the request thread; returns elapsed time and thread info |
-| `GET /v1/virtual-threads/concurrent?mode=VIRTUAL&tasks=1000&delayMs=100&poolSize=100` | Runs a batch of simulated I/O waits inside the app on `PLATFORM` or `VIRTUAL` threads. `tasks` ≤ 10,000, `delayMs` ≤ 5,000. Platform runs whose theoretical duration exceeds 60 s are rejected with 400 |
+| `GET /v1/virtual-threads/info` | Is this request on a virtual thread? Name, id and `toString()` (which names the carrier) |
+| `GET /v1/virtual-threads/io?delayMs=200` | One simulated I/O wait on the request thread (0–10,000 ms). Used for the Tomcat load test |
+| `GET /v1/virtual-threads/compare?workload=IO&tasks=2000&delayMs=100&poolSize=100&runs=3` | **The PoC in one call:** runs the same workload on a platform pool and on virtual threads, and returns both sides plus a verdict |
+
+`/compare` parameters:
+
+| Parameter | Default | Range | Meaning |
+| :--- | :--- | :--- | :--- |
+| `workload` | `IO` | `IO`, `CPU` | Waiting (`Thread.sleep`) or computing (prime counting) |
+| `tasks` | 2000 for IO, 2 × cores for CPU | 1–5000, CPU max 64 | Number of tasks |
+| `delayMs` | 100 | 0–2000 | Simulated wait per task (IO) |
+| `primeLimit` | 2000000 | 1000–3000000 | Work per task (CPU) |
+| `poolSize` | 100 for IO, cores for CPU | 1–500 | Platform pool size |
+| `runs` | 1 | 1–3 | Repetitions per mode; the times are averaged |
+
+Requests whose platform side would take longer than 60 seconds are rejected with 400
+`INVALID_REQUEST`, because the endpoint is public while the PoC profile is active.
+
+### 10.3 Guided demo
+
+```bash
+./demo.sh          # all steps, pausing between each
+./demo.sh 3        # only the comparison step
+```
+Step 1 runs the basics demo; steps 2–4 call the running app. See
+[`demo-script.md`](demo-script.md) for the talk runbook.
 
 ### 10.4 Tests
 
 ```bash
-mvn test     # includes unit + @WebMvcTest + Testcontainers integration tests for the PoC
+mvn test     # unit + @WebMvcTest + Testcontainers integration tests
 mvn verify   # + Spotless, SpotBugs, PMD, JaCoCo
 ```
 
-Tests only check correctness (task counts, thread type, concurrency bounds, checksums), never timing,
-so they are not flaky under the parallel Surefire configuration.
+Tests only check correctness (task counts, thread type, concurrency bounds, checksums), never
+timings, so they are not flaky under the parallel Surefire configuration.
 
-## 11. Benchmark methodology
+## 11. Methodology
 
 ```
-VirtualThreadBenchmarkApp (main, key=value args)
+GET /v1/virtual-threads/compare?workload=io&tasks=2000&delayMs=100&poolSize=100&runs=3
           │
           ▼
-   BenchmarkRunner.runRepeated(mode, tasks, pool, task, warmups, runs)
-          │   for each run: build N instrumented copies of the SAME Callable
+VirtualThreadController            validates the parameters (@Min / @Max)
+          ▼
+VirtualThreadServiceImpl           builds ONE Callable for the chosen workload,
+          │                        then runs it in both modes, `runs` times each
+          ▼
+WorkloadRunner.run(mode, tasks, poolSize, task)
+          │   wrap each task:  tracker.enter() → isVirtual()? → work → tracker.exit()
           │   start timer ─▶ create executor ─▶ invokeAll ─▶ sum results ─▶ close ─▶ stop timer
           ▼
    ┌───────────────────────────────┐     ┌──────────────────────────────────────┐
    │ PLATFORM                      │     │ VIRTUAL                              │
    │ Executors.newFixedThreadPool  │     │ Executors.newVirtualThreadPerTask... │
    └───────────────────────────────┘     └──────────────────────────────────────┘
-          │  each task: ConcurrencyTracker.enter() → isVirtual()? → workload → exit()
           ▼
-   BenchmarkRuns (avg / min / max / throughput / max concurrency) ─▶ BenchmarkReportFormatter
+RunResult per run → averaged into the response, with a plain-English summary
 ```
 
-- **Same workload in both modes.** The same `Callable` is used. Each task returns a value
-  (`1` for I/O, the prime count for CPU), and the summed **checksum must match** between modes. The
-  report prints "Checksums match: yes".
-- **Warm-up + repetitions.** 1 discarded warm-up run, then 3 measured runs per mode. Average, min and
-  max are reported, never a single run.
+- **Same workload in both modes.** The *same* `Callable` instance is passed to both. Each task
+  returns a value (`1` for I/O, the prime count for CPU) and the sums are compared:
+  `sameWorkVerified` is `true` only when both checksums match.
 - **What is timed.** Wall-clock (`System.nanoTime`) from executor creation until every task has
-  finished and the executor is closed. Thread creation cost is included for both modes.
-- **Instrumentation.** `ConcurrencyTracker` records the maximum number of tasks in flight. Each task
-  records whether it ran on a virtual thread.
-- **I/O workload.** `Thread.sleep(ioWaitMs)`. **This is a simulation of waiting, not real database or
-  network I/O.**
-- **CPU workload.** Deterministic trial-division prime count up to `primeLimit` (148,933 primes below
-  2,000,000). About 285 ms per task when run alone on this machine. It is bounded: 16 tasks, about
-  2 s per run.
-- **Plain Java.** No Spring context, no database, no JMH. This is a controlled learning benchmark, not
-  a rigorous microbenchmark.
+  finished and the executor is closed. Thread creation is included for both modes.
+- **Repetitions.** `runs=3` repeats each mode three times; the response shows every run in `runsMs`
+  plus the average in `elapsedMs`.
+- **Instrumentation.** `ConcurrencyTracker` records the peak number of tasks in flight, each task
+  records whether it ran on a virtual thread, and the first task's `Thread.toString()` is returned
+  as `sampleThread`.
+- **I/O workload.** `Thread.sleep(delayMs)`. **This simulates waiting, not real database or network
+  I/O.**
+- **CPU workload.** Deterministic trial-division prime count (148,933 primes below 2,000,000),
+  about 285 ms per task on this machine. Bounded to 64 tasks so the machine stays responsive.
 
 **Known methodology limitations**
-- Within each scenario the platform mode always runs **before** the virtual mode. On a laptop that
-  heats up and throttles, the second mode can be slightly penalised. This matters for the CPU
-  benchmark, where the difference between modes was within the noise. Alternating the order would
-  remove this bias.
+- Measurements happen **inside the running application**, so Tomcat, the JIT compiler and GC add
+  noise. This matters for the CPU comparison, where the real difference is within that noise.
+- There is **no warm-up run**, and the platform mode always runs **before** the virtual mode. On a
+  laptop that throttles as it heats up, the second mode can be penalised. Use `runs=3` and repeat
+  the call a few times before drawing conclusions.
 - The HTTP load generator in §12.3 ran on the **same machine** as the server, so they shared CPU.
-- The "All 9 runs" CPU averages in §12.2 were calculated from the per-run values printed by the
-  program. They were not printed directly.
 
-## 12. Benchmark results
+## 12. Results
 
-All numbers below were produced by actually running the code on:
+All numbers below came from actually calling the endpoints on:
 
 | | |
 | :--- | :--- |
-| Date | 2026-09-22 |
+| Date | 2026-09-23 |
 | CPU | Intel Core i7-1185G7 — 4 physical cores / 8 hardware threads, turbo up to 4.8 GHz (laptop) |
 | RAM | 30 GB |
 | OS | Linux 7.0 |
-| JDK | OpenJDK 25 (Temurin, 2025-09-16), default JVM flags |
-| Background load | Normal desktop use plus another JVM application running (load average 2–5) |
+| JDK | OpenJDK 25 (Temurin), default JVM flags |
+| Profile | `local,virtual-thread-poc` |
+| Background load | Normal desktop use plus another JVM (load average 2–4) |
 
-### 12.1 I/O-bound (simulated wait 100 ms, platform pool 100, 1 warm-up + 3 measured runs)
+### 12.1 I/O-bound — `?workload=IO&tasks=2000&delayMs=100&poolSize=100&runs=3`
 
-| Tasks | Mode | Runs (ms) | Avg total time | Avg throughput | Max concurrency | Theoretical min |
-| ---: | :--- | :--- | ---: | ---: | ---: | ---: |
-| 1,000 | Platform (100) | 1006, 1006, 1006 | 1,006.8 ms | 993 tasks/s | 100 | 1,000 ms |
-| 1,000 | Virtual | 103, 102, 102 | 102.9 ms | 9,715 tasks/s | 1,000 | ~100 ms |
-| 5,000 | Platform (100) | 5010, 5013, 5008 | 5,011.0 ms | 998 tasks/s | 100 | 5,000 ms |
-| 5,000 | Virtual | 103, 105, 103 | 104.1 ms | 48,037 tasks/s | 5,000 | ~100 ms |
-| 10,000 | Platform (100) | 10043, 10025, 10017 | 10,028.6 ms | 997 tasks/s | 100 | 10,000 ms |
-| 10,000 | Virtual | 114, 107, 106 | 109.5 ms | 91,398 tasks/s | 10,000 | ~100 ms |
+| Mode | Runs (ms) | Average | Throughput | Max concurrency | Tasks on virtual threads |
+| :--- | :--- | ---: | ---: | ---: | ---: |
+| Platform (pool 100) | 2034, 2014, 2011 | 2,020 ms | 990 tasks/s | 100 | 0 / 2000 |
+| Virtual | 117, 109, 110 | 112 ms | 17,857 tasks/s | 2,000 | 2000 / 2000 |
 
-Platform / virtual ratio: **9.8×** (1,000), **48.1×** (5,000), **91.6×** (10,000). Checksums matched in
-every scenario.
+**Speed-up 18.0×**, `sameWorkVerified: true` (checksum 2000 in both). Two repeat calls gave 19.2×
+and 19.5×, so the effect is stable.
 
-**Control — platform pool as large as the task count** (same settings, 3 measured runs):
+The theoretical platform time is `ceil(2000 / 100) × 100 ms = 2000 ms`; measured 2,020 ms, which is
+1% off. The theoretical virtual time is one wait, about 100 ms; measured 112 ms.
 
-| Tasks | Mode | Avg total time [min–max] | Max concurrency |
-| ---: | :--- | :--- | ---: |
-| 1,000 | Platform (1,000 threads) | 161.0 ms [157–164] | 1,000 |
-| 1,000 | Virtual | 103.1 ms [102–103] | 1,000 |
-| 10,000 | Platform (10,000 threads) | 2,518.9 ms [2,395–2,692] | **2,736** |
-| 10,000 | Virtual | 121.9 ms [109–133] | 10,000 |
+`sampleThread` shows what ran the first task:
+```
+platform: Thread[#272,pool-4-thread-1,5,VirtualThreads]
+virtual:  VirtualThread[#4376]/runnable@ForkJoinPool-1-worker-5
+```
+(The platform thread's *thread group* is called `VirtualThreads` merely because the request thread
+that created the pool was virtual. It is still an ordinary platform thread: no `VirtualThread[`
+prefix, and `tasksOnVirtualThreads` is 0.)
 
-### 12.2 CPU-bound (16 tasks, primes up to 2,000,000, 8 logical CPUs, 1 warm-up + 3 measured runs)
+### 12.2 CPU-bound — `?workload=CPU&runs=3` (16 tasks, primes to 2,000,000, 8 logical CPUs)
 
-The benchmark was run as three separate invocations, because a single one was too noisy to draw
-conclusions from.
+The call was repeated four times, because one call is not enough to conclude anything.
 
-| Invocation | Platform pool 8 — runs (ms) | Avg | Virtual — runs (ms) | Avg | Platform / virtual |
+| Call | Platform runs (ms) | Avg | Virtual runs (ms) | Avg | Speed-up |
 | :--- | :--- | ---: | :--- | ---: | ---: |
-| 1 | 1115, 1478, 2004 | 1,532.5 | 1852, 1757, 1733 | 1,781.2 | 0.86× |
-| 2 | 2021, 1817, 1795 | 1,878.2 | 1958, 1723, 1741 | 1,807.6 | 1.04× |
-| 3 | 1662, 1757, 1621 | 1,680.4 | 1779, 1637, 1798 | 1,738.7 | 0.97× |
-| **All 9 runs** | range 1,115–2,021 | **1,696.7** | range 1,637–1,958 | **1,775.3** | **0.96×** |
+| 1 | 1070, 1095, 1454 | 1,206 | 1697, 1619, 1906 | 1,741 | 0.69× |
+| 2 | 1090, 1122, 1083 | 1,098 | 1073, 1075, 1575 | 1,241 | 0.88× |
+| 3 | 1748, 1663, 1822 | 1,744 | 1643, 1590, 1896 | 1,710 | 1.02× |
+| 4 | 1620, 1592, 1784 | 1,665 | 1598, 1677, 1749 | 1,675 | 0.99× |
 
-- Max observed concurrency: platform **8** (pool size), virtual **8** (number of carriers), even
-  though 16 virtual threads were created.
-- Control with a 16-thread platform pool: platform 1,703.0 ms [1,609–1,762] vs virtual 1,752.9 ms
-  [1,624–1,903] (0.97×). The platform pool reached concurrency 16, virtual stayed at 8. More threads
-  did not add CPU either.
-- Checksum 2,382,928 (= 16 × 148,933) in both modes.
+Platform runs ranged 1,070–1,822 ms and virtual runs 1,073–1,906 ms: the ranges overlap almost
+completely, and no mode wins consistently. Both modes reported **max concurrency 8**, the core
+count, even though 16 virtual threads were created. Checksum 2,382,928 (= 16 × 148,933) in every
+call.
 
 ### 12.3 Spring Boot — Tomcat on virtual vs platform threads
 
-Same application and endpoint, started once with the `virtual-thread-poc` profile and once with the
-same profile plus `--spring.threads.virtual.enabled=false`. Load: **400 requests to
-`/v1/virtual-threads/io?delayMs=1000` released at the same instant** (JDK `HttpClient`, after 50
-warm-up requests), repeated 3 times.
+Same app, started once with the `virtual-thread-poc` profile and once with the same profile plus
+`--spring.threads.virtual.enabled=false`. Load: **400 requests to `/v1/virtual-threads/io?delayMs=1000`
+released at the same instant** (JDK `HttpClient`, after 50 warm-up requests), three times.
 
 | Request threads | Run | Wall time | p50 | p95 | max |
 | :--- | :---: | ---: | ---: | ---: | ---: |
-| Virtual (`tomcat-handler-N`) | 1 | 1,379 ms | 1,145 ms | 1,254 ms | 1,271 ms |
-| | 2 | 1,184 ms | 1,107 ms | 1,159 ms | 1,177 ms |
-| | 3 | 1,097 ms | 1,042 ms | 1,088 ms | 1,091 ms |
-| Platform (`http-nio-8081-exec-N`, max 200) | 1 | 2,271 ms | 1,930 ms | 2,179 ms | 2,234 ms |
-| | 2 | 2,127 ms | 2,014 ms | 2,104 ms | 2,121 ms |
-| | 3 | 2,089 ms | 2,004 ms | 2,072 ms | 2,081 ms |
+| Virtual (`tomcat-handler-N`) | 1 | 1,196 ms | 1,082 ms | 1,122 ms | 1,146 ms |
+| | 2 | 1,129 ms | 1,059 ms | 1,113 ms | 1,119 ms |
+| | 3 | 1,078 ms | 1,029 ms | 1,046 ms | 1,055 ms |
+| Platform (`http-nio-8083-exec-N`, max 200) | 1 | 2,236 ms | 1,979 ms | 2,178 ms | 2,218 ms |
+| | 2 | 2,124 ms | 2,005 ms | 2,093 ms | 2,101 ms |
+| | 3 | 2,070 ms | 2,000 ms | 2,050 ms | 2,062 ms |
 
-A simpler `curl` + `xargs -P 400` run showed the same direction, but less clearly: p95 1.01–1.12 s
-(virtual) vs 1.33–1.58 s (platform). Spawning 400 `curl` processes staggers the arrivals.
+Endpoint checks in both modes: `/info` reported `virtual=true` / `tomcat-handler-1` with the PoC
+profile and `virtual=false` / `http-nio-8083-exec-2` with it disabled. Invalid parameters returned
+400, an over-long run returned 400 `INVALID_REQUEST`, and `/v1/users/{uuid}` still returned **401**.
+Without the PoC profile, `/v1/virtual-threads/info` returned **404**.
 
-Endpoint checks (both modes): `/info` reported `virtual=true` / `tomcat-handler-1` with the PoC
-profile and `virtual=false` / `http-nio-8081-exec-2` with it disabled. Invalid parameters returned
-400, the too-long platform batch returned 400 `INVALID_REQUEST`, and `/v1/users/{uuid}` still
-returned **401**. `/concurrent` inside the app: `VIRTUAL` 5,000 × 100 ms in 162 ms vs `PLATFORM`
-(pool 100) in 5,046 ms.
+### 12.4 Recorded earlier: the platform pool as large as the task count
+
+Measured with a standalone harness that is no longer part of the PoC, on the same machine
+(10,000 tasks, 100 ms wait, 1 warm-up + 3 measured runs):
+
+| Tasks | Mode | Average [min–max] | Max concurrency |
+| ---: | :--- | :--- | ---: |
+| 1,000 | Platform, 1,000 threads | 161 ms [157–164] | 1,000 |
+| 1,000 | Virtual | 103 ms [102–103] | 1,000 |
+| 10,000 | Platform, 10,000 threads | 2,519 ms [2,395–2,692] | **2,736** |
+| 10,000 | Virtual | 122 ms [109–133] | 10,000 |
+
+This is kept because it answers the obvious objection: "why not just make the pool bigger?"
 
 ## 13. Observations and conclusions
 
-1. **I/O-bound: the platform run is capped by pool size. The virtual run is capped by the wait
-   itself.** Platform times matched `ceil(tasks / 100) × 100 ms` within 0.3%, and throughput
-   plateaued at ~1,000 tasks/s regardless of task count. Virtual times stayed at ~100–110 ms, and
-   throughput grew with the task count, because every task waited at the same time
-   (max concurrency = task count).
-2. **The gain comes from affordable concurrency, not faster threads.** When the platform pool was
-   as large as the task count, 1,000 platform threads came close (161 ms vs 103 ms). At 10,000 the
-   platform run took 2.5 s and never had more than 2,736 tasks in flight. The most likely cause is
-   the cost of creating real OS threads: early tasks finished before the last threads had even
-   been created. This is inferred from the concurrency numbers, not measured directly. Virtual
-   threads handled 10,000 in ~120 ms.
-3. **CPU-bound: no improvement.** Across 9 measured runs per mode the averages were within ~5%
-   (1,697 vs 1,775 ms), and the run ranges overlapped heavily. Neither mode won consistently.
-   Virtual threads never exceeded 8 concurrent tasks — the carrier count — so they cannot
-   add CPU capacity.
+1. **I/O-bound: the platform run is capped by pool size, the virtual run by the wait itself.** The
+   platform time matched `ceil(tasks / poolSize) × delay` to within 1%, and throughput sat at about
+   990 tasks/s. Virtual threads finished in roughly one wait, with peak concurrency equal to the
+   task count: 18–19.5× faster in three calls.
+2. **The gain is affordable concurrency, not faster threads.** With a pool as large as the task
+   count, 1,000 platform threads came close (161 ms vs 103 ms). At 10,000 the platform run took
+   2.5 s and never had more than 2,736 tasks in flight. The most likely cause is the cost of
+   creating real OS threads: early tasks finished before the last threads had even been created.
+   This is inferred from the concurrency numbers, not measured directly (§12.4).
+3. **CPU-bound: no improvement.** Across four calls the speed-up was 0.69×, 0.88×, 1.02× and 0.99×,
+   with heavily overlapping run ranges. Virtual threads never exceeded 8 concurrent tasks, the
+   carrier count, so they cannot add CPU capacity.
 4. **Spring Boot: one property changes the request-thread model.** With 200 Tomcat platform threads,
-   400 simultaneous 1-second requests were served in two waves (p50 ≈ 2.0 s). With virtual threads
-   all 400 were served in one wave (p50 ≈ 1.04–1.15 s). Controller and service code did not change.
+   400 simultaneous one-second requests were served in two waves (p50 ≈ 2.0 s). With virtual threads
+   all 400 were served in one wave (p50 ≈ 1.03–1.08 s). No controller or service code changed.
 
 **Unexpected or noteworthy results**
-- **CPU runs were noisy** (one platform invocation ranged 1,115–2,004 ms). This is a laptop with
-  turbo/thermal frequency scaling, 4 physical cores exposed as 8 hardware threads, and other load.
-  That is why the CPU benchmark was repeated and no winner is claimed.
-- **CPU parallel speed-up was lower than "8 cores" suggests.** 16 × ~285 ms would take ~570 ms on
-  8 real cores. The observed ~1.7 s means an effective ~2.7× speed-up, consistent with 4 physical
-  cores plus hyper-threading and lower all-core clocks. Both modes are limited in exactly the same way.
-- **10,000 platform threads were created successfully** but slowly (see conclusion 2). On a machine
-  with a lower `ulimit -u` this configuration could fail with `OutOfMemoryError: unable to create
-  native thread`.
+- **The CPU numbers are noisy**, and the first call looked like a 31% loss for virtual threads
+  (0.69×) before repeats showed it was noise. This is a laptop with turbo/thermal scaling, 4
+  physical cores exposed as 8 hardware threads, and other load. Never conclude from one call.
+- **CPU parallel speed-up is lower than "8 cores" suggests.** 16 × ~285 ms would be ~570 ms on 8
+  real cores; the observed ~1.2–1.7 s implies an effective ~2.7× speed-up, consistent with 4
+  physical cores plus hyper-threading. Both modes are limited in exactly the same way.
+- **A platform thread created by a virtual thread reports the thread group `VirtualThreads`**
+  (§12.1). It is still a platform thread; only the group name is inherited.
 
 ### Limitations of this PoC and possible improvements
 
-- `Thread.sleep()` only simulates waiting. A follow-up could call a real endpoint (for example
-  WireMock or a local stub) or a real database. That would show the connection-pool bound from §8.
-- No JMH. Results are affected by OS scheduling, CPU frequency scaling and background load.
-  Numbers are indicative, not publishable microbenchmarks.
-- Memory footprint was not measured. Adding RSS / heap sampling (or JFR) would show the second big
-  advantage of virtual threads: memory per thread.
-- The HTTP load test used a throwaway generator. A dedicated tool (`wrk`, `k6`, Gatling) would give
-  more robust latency distributions.
-- Pinning was not demonstrated. `-Djdk.tracePinnedThreads` was removed in JDK 24+. JFR's
-  `jdk.VirtualThreadPinned` event could be used to show native-frame pinning.
+- `Thread.sleep()` only simulates waiting. A follow-up could call a real endpoint or database, which
+  would show the connection-pool bound described in §8.
+- No JMH, and the measurements run inside the web application. Results are indicative, not
+  publishable microbenchmarks.
+- Memory footprint was not measured. Adding RSS/heap sampling or JFR would show the other big
+  advantage of virtual threads.
+- The HTTP load test used a throwaway generator on the same machine. A dedicated tool (`wrk`, `k6`,
+  Gatling) on a separate host would give more robust latency distributions.
+- Pinning was not demonstrated. `-Djdk.tracePinnedThreads` was removed in JDK 24+; JFR's
+  `jdk.VirtualThreadPinned` event could be used instead.

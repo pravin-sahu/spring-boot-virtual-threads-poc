@@ -1,9 +1,9 @@
 package com.mb.modules.virtualthread.service;
 
-import com.mb.modules.virtualthread.dto.response.ConcurrentRunResponseDto;
+import com.mb.modules.virtualthread.dto.response.ComparisonResponseDto;
 import com.mb.modules.virtualthread.dto.response.IoSimulationResponseDto;
 import com.mb.modules.virtualthread.dto.response.ThreadInfoResponseDto;
-import com.mb.modules.virtualthread.enums.ThreadMode;
+import com.mb.modules.virtualthread.enums.WorkloadType;
 
 /**
  * Virtual thread PoC operations.
@@ -23,12 +23,21 @@ public interface VirtualThreadService {
   IoSimulationResponseDto simulateIo(long delayMs);
 
   /**
-   * Runs {@code tasks} simulated I/O waits concurrently using the given thread mode.
+   * Runs the same workload twice — once on a fixed platform pool, once on one virtual thread per
+   * task — and reports both sides.
    *
-   * @param mode platform pool or virtual-thread-per-task
-   * @param tasks number of tasks
-   * @param delayMs simulated wait per task
-   * @param poolSize platform pool size (ignored for virtual)
+   * @param workload waiting ({@code IO}) or computing ({@code CPU})
+   * @param tasks number of tasks, or {@code null} for the default of the chosen workload
+   * @param delayMs simulated wait per task, used by {@code IO}
+   * @param primeLimit prime-counting limit per task, used by {@code CPU}
+   * @param poolSize platform pool size, or {@code null} for the default of the chosen workload
+   * @param runs how many times to repeat each mode; the times are averaged
    */
-  ConcurrentRunResponseDto runConcurrentIo(ThreadMode mode, int tasks, long delayMs, int poolSize);
+  ComparisonResponseDto compare(
+      WorkloadType workload,
+      Integer tasks,
+      long delayMs,
+      int primeLimit,
+      Integer poolSize,
+      int runs);
 }

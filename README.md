@@ -2,7 +2,7 @@
 
 A production-ready Spring Boot REST API boilerplate built with **Java 25**, **Spring Boot 4.1**, and **PostgreSQL**. Clone this repository to get a clean, scalable foundation for any new REST API project — authentication, database migrations, code quality enforcement, AOP logging, and a full testing infrastructure are all pre-wired so you can focus on building features from day one.
 
-> **Virtual Threads PoC:** a learning proof of concept comparing platform and virtual threads (benchmarks + `/v1/virtual-threads/**` endpoints) lives in [`docs/virtual-threads-poc.md`](docs/virtual-threads-poc.md).
+> **Virtual Threads PoC:** a learning proof of concept comparing platform and virtual threads (`/v1/virtual-threads/**` endpoints + a guided `./demo.sh`) lives in [`docs/virtual-threads-poc.md`](docs/virtual-threads-poc.md).
 
 ---
 

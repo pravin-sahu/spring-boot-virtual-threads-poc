@@ -1,12 +1,12 @@
 package com.mb.modules.virtualthread.config;
 
-import com.mb.modules.virtualthread.benchmark.BenchmarkRunner;
+import com.mb.modules.virtualthread.benchmark.WorkloadRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 /**
- * Exposes the plain-Java {@link BenchmarkRunner} as a bean, keeping the benchmark package free of
+ * Exposes the plain-Java {@link WorkloadRunner} as a bean, keeping the benchmark package free of
  * Spring annotations.
  *
  * <p>All PoC beans (this config, the service and the controller) exist only when the {@value
@@ -23,7 +23,7 @@ public class VirtualThreadPocConfig {
   public static final String PROFILE = "virtual-thread-poc";
 
   @Bean
-  BenchmarkRunner benchmarkRunner() {
-    return new BenchmarkRunner();
+  WorkloadRunner workloadRunner() {
+    return new WorkloadRunner();
   }
 }

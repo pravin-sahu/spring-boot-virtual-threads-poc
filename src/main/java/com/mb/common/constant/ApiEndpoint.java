@@ -18,6 +18,6 @@ public final class ApiEndpoint {
   public static final String VIRTUAL_THREADS = "{version}/virtual-threads";
   public static final String VIRTUAL_THREADS_INFO = "/info";
   public static final String VIRTUAL_THREADS_IO = "/io";
-  public static final String VIRTUAL_THREADS_CONCURRENT = "/concurrent";
+  public static final String VIRTUAL_THREADS_COMPARE = "/compare";
   public static final String VIRTUAL_THREADS_PUBLIC_PATTERN = "/v1/virtual-threads/**";
 }

@@ -3,12 +3,13 @@ package com.mb.modules.virtualthread.dto.response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.mb.modules.virtualthread.enums.ThreadMode;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
 /**
- * Measurements of a batch of simulated I/O waits executed inside the running application.
+ * One side of a comparison: how one thread mode handled the workload.
  *
  * @author pravin.sahu
  */
@@ -16,22 +17,28 @@ import lombok.Getter;
 @Getter
 @Builder
 @AllArgsConstructor
-public class ConcurrentRunResponseDto {
+public class ModeResultResponseDto {
 
-  private ThreadMode mode;
+  private ThreadMode threadType;
 
-  private int tasks;
-
-  private long delayMs;
-
-  /** Platform pool size; absent for {@link ThreadMode#VIRTUAL}. */
+  /**
+   * Platform pool size; absent for {@link ThreadMode#VIRTUAL}, which creates one thread per task.
+   */
   private Integer poolSize;
 
+  /** Average across all runs. */
   private long elapsedMs;
+
+  private List<Long> runsMs;
 
   private double throughputPerSecond;
 
   private int maxObservedConcurrency;
 
   private long tasksOnVirtualThreads;
+
+  private long checksum;
+
+  /** {@code Thread.toString()} of the thread that ran the first task. */
+  private String sampleThread;
 }

@@ -35,4 +35,6 @@ public class ExceptionMessage {
       "Requested platform run would exceed 60 seconds; reduce tasks or delayMs, or raise poolSize";
   public static final String VIRTUAL_THREAD_RUN_INTERRUPTED = "Virtual thread demo was interrupted";
   public static final String VIRTUAL_THREAD_RUN_FAILED = "Virtual thread demo task failed";
+  public static final String VIRTUAL_THREAD_TOO_MANY_CPU_TASKS =
+      "CPU comparisons are limited to 64 tasks; each task occupies a core until it finishes";
 }

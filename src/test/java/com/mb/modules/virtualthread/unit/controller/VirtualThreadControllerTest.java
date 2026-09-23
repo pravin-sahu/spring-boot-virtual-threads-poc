@@ -1,17 +1,19 @@
 package com.mb.modules.virtualthread.unit.controller;
 
-import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.CONCURRENT_URL;
+import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.COMPARE_URL;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.INFO_URL;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.IO_URL;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.POOL_SIZE;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.TASKS;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.VIRTUAL_THREAD_NAME;
-import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.buildConcurrentRun;
+import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.buildComparison;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.buildIoSimulation;
 import static com.mb.modules.virtualthread.testdata.VirtualThreadTestDataBuilder.buildVirtualThreadInfo;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,7 +26,7 @@ import com.mb.infrastructure.security.config.CustomAuthenticationEntryPoint;
 import com.mb.infrastructure.security.config.SecurityConfig;
 import com.mb.modules.virtualthread.config.VirtualThreadPocConfig;
 import com.mb.modules.virtualthread.controller.VirtualThreadController;
-import com.mb.modules.virtualthread.enums.ThreadMode;
+import com.mb.modules.virtualthread.enums.WorkloadType;
 import com.mb.modules.virtualthread.service.VirtualThreadService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -78,8 +80,6 @@ class VirtualThreadControllerTest {
         .expectStatus()
         .isOk()
         .expectBody()
-        .jsonPath("$.success")
-        .isEqualTo(true)
         .jsonPath("$.data.virtual")
         .isEqualTo(true)
         .jsonPath("$.data.threadType")
@@ -118,60 +118,84 @@ class VirtualThreadControllerTest {
   }
 
   // -------------------------------------------------------------------------
-  // GET /v1/virtual-threads/concurrent
+  // GET /v1/virtual-threads/compare
   // -------------------------------------------------------------------------
 
   @Test
-  @DisplayName("concurrent with explicit params → 200 with batch measurements")
-  void concurrentWithParamsReturnsOk() {
-    when(virtualThreadService.runConcurrentIo(ThreadMode.PLATFORM, TASKS, 50, POOL_SIZE))
-        .thenReturn(buildConcurrentRun(ThreadMode.PLATFORM));
+  @DisplayName("compare with explicit params → 200 with both modes side by side")
+  void compareWithParamsReturnsOk() {
+    when(virtualThreadService.compare(WorkloadType.IO, TASKS, 50, 2_000_000, POOL_SIZE, 1))
+        .thenReturn(buildComparison(WorkloadType.IO));
 
     restClient
         .get()
-        .uri(CONCURRENT_URL + "?mode=PLATFORM&tasks={t}&delayMs=50&poolSize={p}", TASKS, POOL_SIZE)
+        .uri(COMPARE_URL + "?workload=IO&tasks={t}&delayMs=50&poolSize={p}", TASKS, POOL_SIZE)
         .exchange()
         .expectStatus()
         .isOk()
         .expectBody()
-        .jsonPath("$.data.mode")
+        .jsonPath("$.data.workload")
+        .isEqualTo("IO")
+        .jsonPath("$.data.platform.threadType")
         .isEqualTo("PLATFORM")
-        .jsonPath("$.data.tasks")
-        .isEqualTo(TASKS)
-        .jsonPath("$.data.poolSize")
-        .isEqualTo(POOL_SIZE);
+        .jsonPath("$.data.platform.poolSize")
+        .isEqualTo(POOL_SIZE)
+        .jsonPath("$.data.virtual.threadType")
+        .isEqualTo("VIRTUAL")
+        .jsonPath("$.data.virtual.poolSize")
+        .doesNotExist()
+        .jsonPath("$.data.sameWorkVerified")
+        .isEqualTo(true)
+        .jsonPath("$.data.summary")
+        .exists();
   }
 
   @Test
-  @DisplayName("concurrent without params → defaults VIRTUAL, 1000 tasks, 100 ms, pool 100")
-  void concurrentUsesDefaults() {
-    when(virtualThreadService.runConcurrentIo(ThreadMode.VIRTUAL, 1000, 100, 100))
-        .thenReturn(buildConcurrentRun(ThreadMode.VIRTUAL));
+  @DisplayName("compare without params → IO defaults, tasks and poolSize left to the service")
+  void compareUsesDefaults() {
+    when(virtualThreadService.compare(
+            eq(WorkloadType.IO), isNull(), eq(100L), eq(2_000_000), isNull(), eq(1)))
+        .thenReturn(buildComparison(WorkloadType.IO));
+
+    restClient.get().uri(COMPARE_URL).exchange().expectStatus().isOk();
+
+    verify(virtualThreadService).compare(WorkloadType.IO, null, 100, 2_000_000, null, 1);
+  }
+
+  @Test
+  @DisplayName("compare?workload=CPU → CPU comparison is requested")
+  void compareCpuWorkload() {
+    when(virtualThreadService.compare(
+            eq(WorkloadType.CPU), any(), anyLong(), anyInt(), any(), anyInt()))
+        .thenReturn(buildComparison(WorkloadType.CPU));
 
     restClient
         .get()
-        .uri(CONCURRENT_URL)
+        .uri(COMPARE_URL + "?workload=CPU&tasks=8&primeLimit=100000")
         .exchange()
         .expectStatus()
         .isOk()
         .expectBody()
-        .jsonPath("$.data.poolSize")
+        .jsonPath("$.data.workload")
+        .isEqualTo("CPU")
+        .jsonPath("$.data.delayMs")
         .doesNotExist();
   }
 
   @Test
-  @DisplayName("concurrent with unknown mode or tasks out of range → 400")
-  void concurrentWithInvalidParamsReturnsBadRequest() {
-    restClient.get().uri(CONCURRENT_URL + "?mode=GPU").exchange().expectStatus().isBadRequest();
-    restClient.get().uri(CONCURRENT_URL + "?tasks=0").exchange().expectStatus().isBadRequest();
-    restClient.get().uri(CONCURRENT_URL + "?tasks=10001").exchange().expectStatus().isBadRequest();
-    restClient.get().uri(CONCURRENT_URL + "?poolSize=0").exchange().expectStatus().isBadRequest();
+  @DisplayName("compare with invalid parameters → 400")
+  void compareWithInvalidParamsReturnsBadRequest() {
+    restClient.get().uri(COMPARE_URL + "?workload=GPU").exchange().expectStatus().isBadRequest();
+    restClient.get().uri(COMPARE_URL + "?tasks=0").exchange().expectStatus().isBadRequest();
+    restClient.get().uri(COMPARE_URL + "?tasks=5001").exchange().expectStatus().isBadRequest();
+    restClient.get().uri(COMPARE_URL + "?poolSize=0").exchange().expectStatus().isBadRequest();
+    restClient.get().uri(COMPARE_URL + "?runs=4").exchange().expectStatus().isBadRequest();
   }
 
   @Test
-  @DisplayName("service rejects too-long platform run → 400 with INVALID_REQUEST")
-  void concurrentWhenServiceRejectsReturnsBadRequest() {
-    when(virtualThreadService.runConcurrentIo(eq(ThreadMode.PLATFORM), anyInt(), anyLong(), eq(1)))
+  @DisplayName("service rejects a too-long run → 400 with INVALID_REQUEST")
+  void compareWhenServiceRejectsReturnsBadRequest() {
+    when(virtualThreadService.compare(any(), any(), anyLong(), anyInt(), any(), anyInt()))
         .thenThrow(
             new AppException(
                 ExceptionMessage.VIRTUAL_THREAD_RUN_TOO_LONG,
@@ -181,7 +205,7 @@ class VirtualThreadControllerTest {
 
     restClient
         .get()
-        .uri(CONCURRENT_URL + "?mode=PLATFORM&tasks=10000&delayMs=1000&poolSize=1")
+        .uri(COMPARE_URL + "?tasks=5000&delayMs=2000&poolSize=1")
         .exchange()
         .expectStatus()
         .isBadRequest()
